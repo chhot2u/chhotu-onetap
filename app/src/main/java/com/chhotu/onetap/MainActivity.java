@@ -53,11 +53,7 @@ public class MainActivity extends AppCompatActivity {
         });
         
         findViewById(R.id.btn_profiles).setOnClickListener(v -> {
-            new AlertDialog.Builder(this)
-                .setTitle("Profiles")
-                .setMessage("Profile system coming soon!")
-                .setPositiveButton("OK", null)
-                .show();
+            showInfo("Profiles", "Save different settings for each game!\n\nFeature coming in next update.");
         });
     }
     
@@ -109,5 +105,13 @@ public class MainActivity extends AppCompatActivity {
         tvStatus.setText(running ? "Service: RUNNING" : "Service: STOPPED");
         tvStatus.setTextColor(running ? 0xFF51CF66 : 0xFFFF6B6B);
         btnStart.setText(running ? "STOP OVERLAY" : "START OVERLAY");
+    }
+    
+    private void showInfo(String title, String message) {
+        new AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton("OK", null)
+            .show();
     }
 }

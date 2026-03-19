@@ -3,7 +3,6 @@ package com.chhotu.onetap;
 import android.content.Context;
 import android.util.DisplayMetrics;
 import android.util.Log;
-import android.widget.Toast;
 
 import java.io.IOException;
 
@@ -23,12 +22,12 @@ public class GestureHelper {
      * Execute swipe gesture.
      */
     public boolean swipe(int x1, int y1, int x2, int y2, int durationMs) {
-        // Clamp coordinates to screen
         DisplayMetrics dm = context.getResources().getDisplayMetrics();
         x1 = clamp(x1, 1, dm.widthPixels - 1);
         y1 = clamp(y1, 1, dm.heightPixels - 1);
         x2 = clamp(x2, 1, dm.widthPixels - 1);
         y2 = clamp(y2, 1, dm.heightPixels - 1);
+        durationMs = Math.max(50, durationMs);
         
         String cmd = String.format("input swipe %d %d %d %d %d", x1, y1, x2, y2, durationMs);
         Log.d(TAG, cmd);
@@ -49,53 +48,34 @@ public class GestureHelper {
     }
     
     /**
-     * Execute multiple rapid taps at a location.
-     */
-    public boolean rapidTap(int x, int y, int count, int intervalMs) {
-        DisplayMetrics dm = context.getResources().getDisplayMetrics();
-        x = clamp(x, 1, dm.widthPixels - 1);
-        y = clamp(y, 1, dm.heightPixels - 1);
-        
-        boolean success = true;
-        for (int i = 0; i < count; i++) {
-            if (!tap(x, y)) success = false;
-            if (i < count - 1) {
-                try { Thread.sleep(intervalMs); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-            }
-        }
-        return success;
-    }
-    
-    /**
-     * Execute a quick swipe based on direction.
+     * Execute a quick swipe based on direction from saved position.
      */
     public boolean quickSwipe(int direction, int speed, float distancePercent) {
         DisplayMetrics dm = context.getResources().getDisplayMetrics();
         int w = dm.widthPixels;
         int h = dm.heightPixels;
         
-        int cx = w / 2;
-        int cy = h / 2;
+        // Use saved position if available, otherwise center
+        GameSettings settings = new GameSettings(context);
+        int startX = settings.getSavedX();
+        int startY = settings.getSavedY();
+        if (startX <= 0 || startY <= 0) {
+            startX = w / 2;
+            startY = h / 2;
+        }
         
-        int endX = cx, endY = cy;
+        int endX = startX;
+        int endY = startY;
         int distance = (int)(Math.min(w, h) * distancePercent);
         
         switch (direction) {
-            case 0: // Up
-                endY = cy - distance;
-                break;
-            case 1: // Down
-                endY = cy + distance;
-                break;
-            case 2: // Left
-                endX = cx - distance;
-                break;
-            case 3: // Right
-                endX = cx + distance;
-                break;
+            case 0: endY = startY - distance; break; // Up
+            case 1: endY = startY + distance; break; // Down
+            case 2: endX = startX - distance; break; // Left
+            case 3: endX = startX + distance; break; // Right
         }
         
-        return swipe(cx, cy, endX, endY, speed);
+        return swipe(startX, startY, endX, endY, speed);
     }
     
     /**
@@ -108,24 +88,26 @@ public class GestureHelper {
     }
     
     /**
-     * Execute auto-fire: continuous rapid taps.
+     * Execute a single auto-fire tap at position.
      */
-    public void autoFire(int x, int y, int intervalMs) {
-        DisplayMetrics dm = context.getResources().getDisplayMetrics();
-        x = clamp(x, 1, dm.widthPixels - 1);
-        y = clamp(y, 1, dm.heightPixels - 1);
-        
-        String cmd = String.format("input tap %d %d", x, y);
-        exec(cmd);
+    public boolean autoFireTap(int x, int y) {
+        return tap(x, y);
     }
     
     private boolean exec(String cmd) {
         try {
             Process p = Runtime.getRuntime().exec(cmd);
             int r = p.waitFor();
+            if (r != 0) {
+                Log.e(TAG, "Command failed with exit code " + r + ": " + cmd);
+            }
             return r == 0;
-        } catch (IOException | InterruptedException e) {
-            Log.e(TAG, "Exec failed: " + e.getMessage());
+        } catch (IOException e) {
+            Log.e(TAG, "IO error: " + e.getMessage());
+            return false;
+        } catch (InterruptedException e) {
+            Log.e(TAG, "Interrupted: " + e.getMessage());
+            Thread.currentThread().interrupt();
             return false;
         }
     }

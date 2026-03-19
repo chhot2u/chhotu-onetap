@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -28,11 +29,10 @@ import android.widget.Toast;
 /**
  * Advanced gaming overlay with multiple features:
  * - Quick Swipe
- * - Auto Fire
- * - Rapid Tap
+ * - Auto Fire (continuous)
+ * - Rapid Tap (continuous)
  * - Combo Move
- * - Drag Mode
- * - Position Save
+ * - Save Position
  */
 public class OverlayService extends Service {
     
@@ -52,10 +52,12 @@ public class OverlayService extends Service {
     // Auto fire state
     private boolean autoFireActive = false;
     private Runnable autoFireRunnable;
+    private TextView fireBtn;
     
     // Rapid tap state
     private boolean rapidTapActive = false;
     private Runnable rapidTapRunnable;
+    private TextView tapBtn;
     
     public static boolean isRunning() { return running; }
     
@@ -97,7 +99,10 @@ public class OverlayService extends Service {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "GamePad Pro", NotificationManager.IMPORTANCE_LOW);
             ch.setDescription("Gaming overlay");
-            getSystemService(NotificationManager.class).createNotificationChannel(ch);
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) {
+                manager.createNotificationChannel(ch);
+            }
         }
         
         Intent intent = new Intent(this, MainActivity.class);
@@ -142,11 +147,12 @@ public class OverlayService extends Service {
         params.x = savedX;
         params.y = savedY;
         
-        // Main container
+        // Main container with rounded corners
         mainPanel = new FrameLayout(this);
-        
-        // Background
-        mainPanel.setBackgroundColor(Color.parseColor("#DD1A1A2E"));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.parseColor("#EE1A1A2E"));
+        bg.setCornerRadius(24);
+        mainPanel.setBackground(bg);
         
         // Button container
         buttonContainer = new LinearLayout(this);
@@ -176,34 +182,35 @@ public class OverlayService extends Service {
         int btnHeight = (int)(56 * scale);
         int marginBottom = (int)(8 * scale);
         int textSize = (int)(14 * scale);
+        int cornerRadius = (int)(12 * scale);
         
         // Quick Swipe button
-        TextView swipeBtn = createButton("⚡ Quick Swipe", "#6C5CE7", textSize, btnHeight, marginBottom);
+        TextView swipeBtn = createButton("⚡ Quick Swipe", "#6C5CE7", textSize, btnHeight, marginBottom, cornerRadius);
         swipeBtn.setOnClickListener(v -> performQuickSwipe());
         buttonContainer.addView(swipeBtn);
         
         // Auto Fire button
-        TextView fireBtn = createButton("🔥 Auto Fire", "#FF6B6B", textSize, btnHeight, marginBottom);
+        fireBtn = createButton("🔥 Auto Fire", "#FF6B6B", textSize, btnHeight, marginBottom, cornerRadius);
         fireBtn.setOnClickListener(v -> toggleAutoFire());
         buttonContainer.addView(fireBtn);
         
         // Rapid Tap button
-        TextView tapBtn = createButton("👆 Rapid Tap", "#51CF66", textSize, btnHeight, marginBottom);
+        tapBtn = createButton("👆 Rapid Tap", "#51CF66", textSize, btnHeight, marginBottom, cornerRadius);
         tapBtn.setOnClickListener(v -> toggleRapidTap());
         buttonContainer.addView(tapBtn);
         
         // Combo Move button
-        TextView comboBtn = createButton("🎯 Combo Move", "#00CEFF", textSize, btnHeight, marginBottom);
+        TextView comboBtn = createButton("🎯 Combo Move", "#00CEFF", textSize, btnHeight, marginBottom, cornerRadius);
         comboBtn.setOnClickListener(v -> performCombo());
         buttonContainer.addView(comboBtn);
         
         // Save Position button
-        TextView saveBtn = createButton("📍 Save Pos", "#FFA502", textSize, btnHeight, marginBottom);
+        TextView saveBtn = createButton("📍 Save Pos", "#FFA502", textSize, btnHeight, marginBottom, cornerRadius);
         saveBtn.setOnClickListener(v -> saveCurrentPosition());
         buttonContainer.addView(saveBtn);
     }
     
-    private TextView createButton(String text, String color, int textSize, int height, int marginBottom) {
+    private TextView createButton(String text, String bgColor, int textSize, int height, int marginBottom, int cornerRadius) {
         TextView btn = new TextView(this);
         btn.setText(text);
         btn.setTextSize(textSize);
@@ -211,17 +218,27 @@ public class OverlayService extends Service {
         btn.setTypeface(null, Typeface.BOLD);
         btn.setGravity(Gravity.CENTER);
         
-        // Background
-        btn.setBackgroundColor(Color.parseColor(color));
+        // Rounded background
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.parseColor(bgColor));
+        bg.setCornerRadius(cornerRadius);
+        btn.setBackground(bg);
         
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
+            (int)(180 * getScale()),
             height
         );
         lp.setMargins(0, 0, 0, marginBottom);
         btn.setLayoutParams(lp);
         
         return btn;
+    }
+    
+    private void updateButtonColor(TextView btn, String activeColor, String normalColor) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.parseColor(activeColor));
+        bg.setCornerRadius((int)(12 * getScale()));
+        btn.setBackground(bg);
     }
     
     private float getScale() {
@@ -239,17 +256,19 @@ public class OverlayService extends Service {
         int speed = settings.getSwipeSpeed();
         float dist = settings.getSwipeDistancePercent();
         
-        boolean ok = gesture.quickSwipe(dir, speed, dist);
-        toast(ok ? "Swipe executed!" : "Swipe failed");
+        new Thread(() -> {
+            boolean ok = gesture.quickSwipe(dir, speed, dist);
+            runOnUiThread(() -> toast(ok ? "⚡ Swipe!" : "Swipe failed"));
+        }).start();
     }
     
     private void toggleAutoFire() {
         if (autoFireActive) {
             stopAutoFire();
-            toast("Auto Fire OFF");
+            toast("🔥 Auto Fire OFF");
         } else {
             startAutoFire();
-            toast("Auto Fire ON");
+            toast("🔥 Auto Fire ON");
         }
     }
     
@@ -257,13 +276,25 @@ public class OverlayService extends Service {
         autoFireActive = true;
         int speed = settings.getAutoFireSpeed();
         
+        // Update button to show active state
+        updateButtonColor(fireBtn, "#FF4444", "#FF6B6B");
+        
         autoFireRunnable = new Runnable() {
             @Override
             public void run() {
                 if (autoFireActive) {
-                    // Tap center of screen
-                    DisplayMetrics dm = getResources().getDisplayMetrics();
-                    gesture.autoFire(dm.widthPixels / 2, dm.heightPixels / 2, speed);
+                    new Thread(() -> {
+                        // Use saved position or center
+                        GameSettings s = new GameSettings(OverlayService.this);
+                        int x = s.getSavedX();
+                        int y = s.getSavedY();
+                        if (x <= 0 || y <= 0) {
+                            DisplayMetrics dm = getResources().getDisplayMetrics();
+                            x = dm.widthPixels / 2;
+                            y = dm.heightPixels / 2;
+                        }
+                        gesture.autoFireTap(x, y);
+                    }).start();
                     handler.postDelayed(this, speed);
                 }
             }
@@ -277,15 +308,19 @@ public class OverlayService extends Service {
             handler.removeCallbacks(autoFireRunnable);
             autoFireRunnable = null;
         }
+        // Reset button color
+        if (fireBtn != null) {
+            updateButtonColor(fireBtn, "#FF6B6B", "#FF6B6B");
+        }
     }
     
     private void toggleRapidTap() {
         if (rapidTapActive) {
             stopRapidTap();
-            toast("Rapid Tap OFF");
+            toast("👆 Rapid Tap OFF");
         } else {
             startRapidTap();
-            toast("Rapid Tap ON");
+            toast("👆 Rapid Tap ON");
         }
     }
     
@@ -293,12 +328,24 @@ public class OverlayService extends Service {
         rapidTapActive = true;
         int interval = settings.getRapidTapInterval();
         
+        // Update button to show active state
+        updateButtonColor(tapBtn, "#33CC33", "#51CF66");
+        
         rapidTapRunnable = new Runnable() {
             @Override
             public void run() {
                 if (rapidTapActive) {
-                    DisplayMetrics dm = getResources().getDisplayMetrics();
-                    gesture.autoFire(dm.widthPixels / 2, dm.heightPixels / 2, interval);
+                    new Thread(() -> {
+                        GameSettings s = new GameSettings(OverlayService.this);
+                        int x = s.getSavedX();
+                        int y = s.getSavedY();
+                        if (x <= 0 || y <= 0) {
+                            DisplayMetrics dm = getResources().getDisplayMetrics();
+                            x = dm.widthPixels / 2;
+                            y = dm.heightPixels / 2;
+                        }
+                        gesture.autoFireTap(x, y);
+                    }).start();
                     handler.postDelayed(this, interval);
                 }
             }
@@ -312,28 +359,37 @@ public class OverlayService extends Service {
             handler.removeCallbacks(rapidTapRunnable);
             rapidTapRunnable = null;
         }
+        // Reset button color
+        if (tapBtn != null) {
+            updateButtonColor(tapBtn, "#51CF66", "#51CF66");
+        }
     }
     
     private void performCombo() {
         new Thread(() -> {
-            DisplayMetrics dm = getResources().getDisplayMetrics();
-            int cx = dm.widthPixels / 2;
-            int cy = dm.heightPixels / 2;
+            GameSettings s = new GameSettings(OverlayService.this);
+            int x = s.getSavedX();
+            int y = s.getSavedY();
+            if (x <= 0 || y <= 0) {
+                DisplayMetrics dm = getResources().getDisplayMetrics();
+                x = dm.widthPixels / 2;
+                y = dm.heightPixels / 2;
+            }
             
-            // Tap then swipe
-            gesture.tap(cx, cy);
-            try { Thread.sleep(settings.getComboDelay()); } catch (InterruptedException e) {}
+            gesture.tap(x, y);
+            try { Thread.sleep(settings.getComboDelay()); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
             gesture.quickSwipe(settings.getSwipeDirection(), 
                               settings.getSwipeSpeed(), 
                               settings.getSwipeDistancePercent());
+            
+            runOnUiThread(() -> toast("🎯 Combo!"));
         }).start();
-        toast("Combo executed!");
     }
     
     private void saveCurrentPosition() {
         DisplayMetrics dm = getResources().getDisplayMetrics();
         settings.savePosition(dm.widthPixels / 2, dm.heightPixels / 2);
-        toast("Position saved!");
+        toast("📍 Position saved!");
     }
     
     // ==================== DRAG SUPPORT ====================
@@ -341,7 +397,7 @@ public class OverlayService extends Service {
     private void enableDrag(View view, WindowManager.LayoutParams params) {
         view.setOnTouchListener(new View.OnTouchListener() {
             private float startX, startY;
-            private long touchTime;
+            private int initialX, initialY;
             
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -349,17 +405,15 @@ public class OverlayService extends Service {
                     case MotionEvent.ACTION_DOWN:
                         startX = event.getRawX();
                         startY = event.getRawY();
-                        touchTime = System.currentTimeMillis();
+                        initialX = params.x;
+                        initialY = params.y;
                         return true;
                     case MotionEvent.ACTION_UP:
-                        // Save new position
                         settings.setPanelPosition(params.x, params.y);
                         return true;
                     case MotionEvent.ACTION_MOVE:
-                        params.x = (int)(event.getRawX() - startX) + params.x;
-                        params.y = (int)(event.getRawY() - startY) + params.y;
-                        startX = event.getRawX();
-                        startY = event.getRawY();
+                        params.x = initialX + (int)(event.getRawX() - startX);
+                        params.y = initialY + (int)(event.getRawY() - startY);
                         try {
                             windowManager.updateViewLayout(mainPanel, params);
                         } catch (Exception e) {}
@@ -379,5 +433,9 @@ public class OverlayService extends Service {
     
     private void toast(String msg) {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+    }
+    
+    private void runOnUiThread(Runnable r) {
+        handler.post(r);
     }
 }
