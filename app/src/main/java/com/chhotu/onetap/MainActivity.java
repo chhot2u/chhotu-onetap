@@ -28,7 +28,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvServiceStatus;
     
     // Launcher for overlay permission
-    private final ActivityResultLauncher<String> overlayPermissionLauncher =
+    private final ActivityResultLauncher<Intent> overlayPermissionLauncher =
         registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
             if (Settings.canDrawOverlays(this)) {
                 Toast.makeText(this, "Overlay permission granted", Toast.LENGTH_SHORT).show();
