@@ -7,16 +7,40 @@ import android.graphics.Path;
 import android.os.Build;
 import android.util.DisplayMetrics;
 import android.util.Log;
-import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 
 /**
  * AccessibilityService that performs auto drag-up gesture.
- * Receives speed parameter and performs gesture accordingly.
+ * 
+ * Uses a singleton pattern so OverlayService can trigger gestures
+ * without calling startService() (which doesn't work for AccessibilityService).
  */
 public class DragService extends AccessibilityService {
     
     private static final String TAG = "DragService";
+    
+    private static DragService instance;
+    
+    /**
+     * Returns the running instance of DragService, or null if not enabled.
+     */
+    public static DragService getInstance() {
+        return instance;
+    }
+    
+    /**
+     * Checks if the accessibility service is currently running.
+     */
+    public static boolean isRunning() {
+        return instance != null;
+    }
+    
+    @Override
+    public void onServiceConnected() {
+        super.onServiceConnected();
+        instance = this;
+        Log.d(TAG, "Accessibility service connected");
+    }
     
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
@@ -25,16 +49,14 @@ public class DragService extends AccessibilityService {
     
     @Override
     public void onInterrupt() {
-        Log.d(TAG, "Accessibility service interrupted");
+        Log.w(TAG, "Accessibility service interrupted");
     }
     
     @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent != null) {
-            int speed = intent.getIntExtra("speed", 500);
-            performDragUp(speed);
-        }
-        return START_NOT_STICKY;
+    public void onDestroy() {
+        super.onDestroy();
+        instance = null;
+        Log.d(TAG, "Accessibility service destroyed");
     }
     
     /**
@@ -42,16 +64,25 @@ public class DragService extends AccessibilityService {
      * 
      * @param durationMs Duration of the gesture in milliseconds
      */
-    private void performDragUp(int durationMs) {
+    public void performDragUp(int durationMs) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             Log.w(TAG, "Gesture dispatch requires Android N+");
             return;
         }
         
+        // Clamp duration to valid range
+        durationMs = Math.max(SettingsManager.MIN_DRAG_SPEED, 
+                     Math.min(SettingsManager.MAX_DRAG_SPEED, durationMs));
+        
         // Get screen dimensions
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         int screenWidth = metrics.widthPixels;
         int screenHeight = metrics.heightPixels;
+        
+        if (screenWidth <= 0 || screenHeight <= 0) {
+            Log.e(TAG, "Invalid screen dimensions: " + screenWidth + "x" + screenHeight);
+            return;
+        }
         
         // Create path from bottom center to top center
         Path path = new Path();
@@ -89,11 +120,5 @@ public class DragService extends AccessibilityService {
         if (!dispatched) {
             Log.e(TAG, "Failed to dispatch drag-up gesture");
         }
-    }
-    
-    @Override
-    public void onDestroy() {
-        super.onDestroy();
-        Log.d(TAG, "DragService destroyed");
     }
 }

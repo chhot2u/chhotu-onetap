@@ -27,8 +27,6 @@ public class MainActivity extends AppCompatActivity {
     private Button btnSettings;
     private TextView tvServiceStatus;
     
-    private boolean isServiceRunning = false;
-    
     // Launcher for overlay permission
     private final ActivityResultLauncher<String> overlayPermissionLauncher =
         registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
@@ -37,6 +35,7 @@ public class MainActivity extends AppCompatActivity {
                 startOverlayService();
             } else {
                 Toast.makeText(this, "Overlay permission denied", Toast.LENGTH_SHORT).show();
+                updateServiceStatus();
             }
         });
     
@@ -70,7 +69,8 @@ public class MainActivity extends AppCompatActivity {
     }
     
     private void toggleService() {
-        if (isServiceRunning) {
+        // Use static flag to check actual service state
+        if (OverlayService.isRunning()) {
             stopOverlayService();
         } else {
             if (checkPermissions()) {
@@ -112,8 +112,11 @@ public class MainActivity extends AppCompatActivity {
                 getContentResolver(),
                 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
             );
-            return enabledServices != null && 
-                   enabledServices.contains(getPackageName() + "/" + DragService.class.getName());
+            if (enabledServices == null) {
+                return false;
+            }
+            String expectedComponent = getPackageName() + "/" + DragService.class.getName();
+            return enabledServices.contains(expectedComponent);
         } catch (Exception e) {
             return false;
         }
@@ -126,19 +129,20 @@ public class MainActivity extends AppCompatActivity {
         } else {
             startService(intent);
         }
-        isServiceRunning = true;
         updateServiceStatus();
     }
     
     private void stopOverlayService() {
         Intent intent = new Intent(this, OverlayService.class);
         stopService(intent);
-        isServiceRunning = false;
         updateServiceStatus();
     }
     
     private void updateServiceStatus() {
-        if (isServiceRunning) {
+        // Check actual service state via static flag
+        boolean serviceRunning = OverlayService.isRunning();
+        
+        if (serviceRunning) {
             tvServiceStatus.setText(R.string.service_running);
             btnToggleService.setText(R.string.stop_service);
         } else {

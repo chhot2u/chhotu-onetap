@@ -6,6 +6,8 @@ import android.content.SharedPreferences;
 /**
  * Manages app settings using SharedPreferences.
  * Stores trigger mode (tap vs long-press) and drag speed.
+ * 
+ * All speed values are automatically clamped to valid range.
  */
 public class SettingsManager {
     
@@ -31,7 +33,10 @@ public class SettingsManager {
     }
     
     public void setTriggerMode(int mode) {
-        prefs.edit().putInt(KEY_TRIGGER_MODE, mode).apply();
+        // Validate: only accept known trigger modes
+        if (mode == TRIGGER_MODE_TAP || mode == TRIGGER_MODE_LONG_PRESS) {
+            prefs.edit().putInt(KEY_TRIGGER_MODE, mode).apply();
+        }
     }
     
     public int getDragSpeed() {
@@ -39,7 +44,22 @@ public class SettingsManager {
     }
     
     public void setDragSpeed(int speedMs) {
-        prefs.edit().putInt(KEY_DRAG_SPEED, speedMs).apply();
+        // Clamp speed to valid range
+        int clampedSpeed = clampSpeed(speedMs);
+        prefs.edit().putInt(KEY_DRAG_SPEED, clampedSpeed).apply();
+    }
+    
+    /**
+     * Clamps a speed value to the valid range [MIN_DRAG_SPEED, MAX_DRAG_SPEED].
+     */
+    private int clampSpeed(int speedMs) {
+        if (speedMs < MIN_DRAG_SPEED) {
+            return MIN_DRAG_SPEED;
+        }
+        if (speedMs > MAX_DRAG_SPEED) {
+            return MAX_DRAG_SPEED;
+        }
+        return speedMs;
     }
     
     public boolean isTapMode() {

@@ -4,7 +4,6 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
-import android.content.Context;
 import android.content.Intent;
 import android.graphics.PixelFormat;
 import android.os.Build;
@@ -12,11 +11,11 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.view.Gravity;
-import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
+import android.widget.Toast;
 
 /**
  * Foreground service that displays a floating overlay icon.
@@ -28,6 +27,9 @@ public class OverlayService extends Service {
     private static final int NOTIFICATION_ID = 1001;
     private static final long LONG_PRESS_DURATION = 500; // ms
     
+    // Static flag to track if service is running (survives app restart)
+    private static boolean isRunning = false;
+    
     private WindowManager windowManager;
     private View overlayView;
     private SettingsManager settingsManager;
@@ -36,9 +38,18 @@ public class OverlayService extends Service {
     private boolean isLongPressTriggered = false;
     private Runnable longPressRunnable;
     
+    /**
+     * Check if the overlay service is currently running.
+     */
+    public static boolean isRunning() {
+        return isRunning;
+    }
+    
     @Override
     public void onCreate() {
         super.onCreate();
+        isRunning = true;
+        
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         settingsManager = new SettingsManager(this);
         handler = new Handler(Looper.getMainLooper());
@@ -61,6 +72,14 @@ public class OverlayService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        isRunning = false;
+        
+        // Clean up handler callbacks to prevent memory leaks
+        if (handler != null) {
+            handler.removeCallbacksAndMessages(null);
+            longPressRunnable = null;
+        }
+        
         removeOverlay();
     }
     
@@ -88,8 +107,8 @@ public class OverlayService extends Service {
         }
         
         return builder
-            .setContentTitle("Chhotu OneTap")
-            .setContentText("Overlay active - tap icon to drag up")
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(getString(R.string.app_description))
             .setSmallIcon(R.drawable.ic_overlay)
             .build();
     }
@@ -111,10 +130,17 @@ public class OverlayService extends Service {
         params.x = 16;
         params.y = 0;
         
-        overlayView = new ImageView(this);
-        ((ImageView) overlayView).setImageResource(R.drawable.ic_overlay);
-        overlayView.setBackgroundResource(R.drawable.ic_overlay);
-        overlayView.setAlpha(0.9f);
+        // Create overlay icon with circular background
+        ImageView iconView = new ImageView(this);
+        iconView.setImageResource(R.drawable.ic_overlay);
+        iconView.setBackgroundResource(R.drawable.bg_overlay_circle);
+        iconView.setAlpha(0.9f);
+        
+        // Add padding so icon sits inside the circle
+        int padding = (int) (16 * getResources().getDisplayMetrics().density);
+        iconView.setPadding(padding, padding, padding, padding);
+        
+        overlayView = iconView;
         
         // Set up touch listener for tap and long-press
         overlayView.setOnTouchListener(new View.OnTouchListener() {
@@ -154,18 +180,15 @@ public class OverlayService extends Service {
                             isMoving = true;
                             if (longPressRunnable != null) {
                                 handler.removeCallbacks(longPressRunnable);
+                                longPressRunnable = null;
                             }
-                            
-                            // Move the overlay
-                            params.x = (int) (initialX - event.getRawX());
-                            params.y = (int) (event.getRawY() - initialY);
-                            windowManager.updateViewLayout(overlayView, params);
                         }
                         return true;
                         
                     case MotionEvent.ACTION_UP:
                         if (longPressRunnable != null) {
                             handler.removeCallbacks(longPressRunnable);
+                            longPressRunnable = null;
                         }
                         
                         long duration = System.currentTimeMillis() - touchStartTime;
@@ -173,12 +196,6 @@ public class OverlayService extends Service {
                         // Handle tap mode (short tap, not moving)
                         if (!isMoving && duration < 300 && settingsManager.isTapMode()) {
                             triggerDragUp();
-                        }
-                        
-                        // Handle long press mode (completed without movement)
-                        if (!isMoving && duration >= LONG_PRESS_DURATION && 
-                            settingsManager.isLongPressMode() && isLongPressTriggered) {
-                            // Already triggered in runnable
                         }
                         
                         return true;
@@ -195,15 +212,25 @@ public class OverlayService extends Service {
             try {
                 windowManager.removeView(overlayView);
             } catch (IllegalArgumentException e) {
-                // View not attached
+                // View not attached or already removed
             }
             overlayView = null;
         }
     }
     
+    /**
+     * Triggers the drag-up gesture via DragService singleton.
+     * Uses the singleton pattern because AccessibilityService cannot be started via startService().
+     */
     private void triggerDragUp() {
-        Intent intent = new Intent(this, DragService.class);
-        intent.putExtra("speed", settingsManager.getDragSpeed());
-        startService(intent);
+        DragService dragService = DragService.getInstance();
+        if (dragService != null) {
+            int speed = settingsManager.getDragSpeed();
+            dragService.performDragUp(speed);
+        } else {
+            Toast.makeText(this, 
+                R.string.accessibility_permission_required, 
+                Toast.LENGTH_SHORT).show();
+        }
     }
 }
