@@ -219,14 +219,13 @@ public class OverlayService extends Service {
     }
     
     /**
-     * Triggers the drag-up gesture via DragService singleton.
+     * Triggers the drag gesture via DragService singleton.
      * Uses the singleton pattern because AccessibilityService cannot be started via startService().
      */
     private void triggerDragUp() {
         DragService dragService = DragService.getInstance();
         if (dragService != null) {
-            int speed = settingsManager.getDragSpeed();
-            dragService.performDragUp(speed);
+            dragService.performDrag(settingsManager);
         } else {
             Toast.makeText(this, 
                 R.string.accessibility_permission_required, 

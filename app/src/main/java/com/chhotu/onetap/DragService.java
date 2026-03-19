@@ -2,7 +2,6 @@ package com.chhotu.onetap;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
-import android.content.Intent;
 import android.graphics.Path;
 import android.os.Build;
 import android.util.DisplayMetrics;
@@ -10,7 +9,7 @@ import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
 
 /**
- * AccessibilityService that performs auto drag-up gesture.
+ * AccessibilityService that performs auto drag gestures.
  * 
  * Uses a singleton pattern so OverlayService can trigger gestures
  * without calling startService() (which doesn't work for AccessibilityService).
@@ -60,19 +59,15 @@ public class DragService extends AccessibilityService {
     }
     
     /**
-     * Performs a drag-up gesture from bottom to top of screen.
+     * Performs a drag gesture based on current settings.
      * 
-     * @param durationMs Duration of the gesture in milliseconds
+     * @param settings The settings manager containing drag configuration
      */
-    public void performDragUp(int durationMs) {
+    public void performDrag(SettingsManager settings) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             Log.w(TAG, "Gesture dispatch requires Android N+");
             return;
         }
-        
-        // Clamp duration to valid range
-        durationMs = Math.max(SettingsManager.MIN_DRAG_SPEED, 
-                     Math.min(SettingsManager.MAX_DRAG_SPEED, durationMs));
         
         // Get screen dimensions
         DisplayMetrics metrics = getResources().getDisplayMetrics();
@@ -84,13 +79,72 @@ public class DragService extends AccessibilityService {
             return;
         }
         
-        // Create path from bottom center to top center
-        Path path = new Path();
-        float startX = screenWidth / 2f;
-        float startY = screenHeight * 0.8f; // Start 80% from top
-        float endX = screenWidth / 2f;
-        float endY = screenHeight * 0.2f; // End 20% from top
+        // Get settings
+        int durationMs = settings.getDragSpeed();
+        int direction = settings.getDragDirection();
+        float distancePercent = settings.getDragDistancePercent();
         
+        // Calculate start and end positions based on direction and settings
+        float startX, startY, endX, endY;
+        
+        // Get custom positions from settings
+        float customStartX = settings.getStartXPercent();
+        float customStartY = settings.getStartYPercent();
+        float customEndX = settings.getEndXPercent();
+        float customEndY = settings.getEndYPercent();
+        
+        switch (direction) {
+            case SettingsManager.DRAG_UP:
+                startX = screenWidth * customStartX;
+                startY = screenHeight * customStartY;
+                endX = screenWidth * customEndX;
+                endY = screenHeight * (customStartY - distancePercent);
+                break;
+                
+            case SettingsManager.DRAG_DOWN:
+                startX = screenWidth * customStartX;
+                startY = screenHeight * customStartY;
+                endX = screenWidth * customEndX;
+                endY = screenHeight * (customStartY + distancePercent);
+                break;
+                
+            case SettingsManager.DRAG_LEFT:
+                startX = screenWidth * customStartX;
+                startY = screenHeight * customStartY;
+                endX = screenWidth * (customStartX - distancePercent);
+                endY = screenHeight * customEndY;
+                break;
+                
+            case SettingsManager.DRAG_RIGHT:
+                startX = screenWidth * customStartX;
+                startY = screenHeight * customStartY;
+                endX = screenWidth * (customStartX + distancePercent);
+                endY = screenHeight * customEndY;
+                break;
+                
+            default:
+                // Default to up
+                startX = screenWidth * 0.5f;
+                startY = screenHeight * 0.8f;
+                endX = screenWidth * 0.5f;
+                endY = screenHeight * 0.2f;
+        }
+        
+        // Clamp positions to screen bounds
+        startX = clamp(startX, 0, screenWidth - 1);
+        startY = clamp(startY, 0, screenHeight - 1);
+        endX = clamp(endX, 0, screenWidth - 1);
+        endY = clamp(endY, 0, screenHeight - 1);
+        
+        // Clamp duration
+        durationMs = Math.max(SettingsManager.MIN_DRAG_SPEED, 
+                     Math.min(SettingsManager.MAX_DRAG_SPEED, durationMs));
+        
+        Log.d(TAG, String.format("Performing drag: (%.0f,%.0f) -> (%.0f,%.0f) in %dms", 
+            startX, startY, endX, endY, durationMs));
+        
+        // Create path for the gesture
+        Path path = new Path();
         path.moveTo(startX, startY);
         path.lineTo(endX, endY);
         
@@ -107,18 +161,22 @@ public class DragService extends AccessibilityService {
             @Override
             public void onCompleted(GestureDescription gestureDescription) {
                 super.onCompleted(gestureDescription);
-                Log.d(TAG, "Drag-up gesture completed successfully");
+                Log.d(TAG, "Gesture completed successfully");
             }
             
             @Override
             public void onCancelled(GestureDescription gestureDescription) {
                 super.onCancelled(gestureDescription);
-                Log.w(TAG, "Drag-up gesture was cancelled");
+                Log.w(TAG, "Gesture was cancelled");
             }
         }, null);
         
         if (!dispatched) {
-            Log.e(TAG, "Failed to dispatch drag-up gesture");
+            Log.e(TAG, "Failed to dispatch gesture");
         }
+    }
+    
+    private float clamp(float value, float min, float max) {
+        return Math.max(min, Math.min(max, value));
     }
 }
