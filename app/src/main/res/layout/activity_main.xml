@@ -5,64 +5,76 @@
     android:orientation="vertical"
     android:gravity="center"
     android:padding="24dp"
-    android:background="@color/white">
+    android:background="@color/bg_dark">
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Chhotu OneTap"
-        android:textSize="32sp"
+        android:text="GamePad Pro"
+        android:textSize="36sp"
         android:textStyle="bold"
-        android:textColor="@color/primary"
+        android:textColor="@color/accent"
         android:layout_marginBottom="8dp" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Simple One-Tap Gesture App"
+        android:text="Advanced Gaming Overlay"
         android:textSize="16sp"
-        android:textColor="@color/gray_dark"
+        android:textColor="@color/text_gray"
         android:layout_marginBottom="32dp" />
 
     <TextView
         android:id="@+id/tv_status"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Loading..."
-        android:textSize="16sp"
-        android:textColor="@color/black"
+        android:text="Service: STOPPED"
+        android:textSize="18sp"
+        android:textColor="@color/white"
         android:gravity="center"
-        android:padding="16dp"
-        android:background="@color/gray_light"
-        android:layout_marginBottom="24dp" />
-
-    <TextView
-        android:id="@+id/tv_hint"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Grant permission to continue"
-        android:textSize="14sp"
-        android:textColor="@color/gray_dark"
-        android:gravity="center"
-        android:layout_marginBottom="32dp" />
+        android:background="@color/bg_card"
+        android:padding="20dp"
+        android:layout_marginBottom="16dp" />
 
     <Button
         android:id="@+id/btn_start"
-        android:layout_width="240dp"
-        android:layout_height="56dp"
-        android:text="Start Service"
+        android:layout_width="260dp"
+        android:layout_height="60dp"
+        android:text="START OVERLAY"
         android:textSize="18sp"
+        android:textStyle="bold"
         android:backgroundTint="@color/primary"
         android:textColor="@color/white"
         android:layout_marginBottom="16dp" />
 
     <Button
         android:id="@+id/btn_settings"
-        android:layout_width="240dp"
-        android:layout_height="56dp"
-        android:text="Configure Gesture"
+        android:layout_width="260dp"
+        android:layout_height="60dp"
+        android:text="⚙️ SETTINGS"
         android:textSize="18sp"
-        android:backgroundTint="@color/accent"
-        android:textColor="@color/white" />
+        android:backgroundTint="@color/bg_button"
+        android:textColor="@color/accent"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/btn_profiles"
+        android:layout_width="260dp"
+        android:layout_height="60dp"
+        android:text="📁 GAME PROFILES"
+        android:textSize="18sp"
+        android:backgroundTint="@color/bg_button"
+        android:textColor="@color/accent2"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Features: Quick Swipe, Auto Fire, Rapid Tap, Combo Moves"
+        android:textSize="12sp"
+        android:textColor="@color/text_gray"
+        android:gravity="center"
+        android:padding="12dp"
+        android:background="@color/bg_card" />
 
 </LinearLayout>

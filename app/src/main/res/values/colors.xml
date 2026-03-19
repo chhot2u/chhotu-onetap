@@ -1,12 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary">#FF6200EE</color>
-    <color name="primary_dark">#FF3700B3</color>
-    <color name="accent">#FF03DAC5</color>
+    <color name="primary">#FF6C5CE7</color>
+    <color name="primary_dark">#FF5A4BD1</color>
+    <color name="accent">#FF00CEFF</color>
+    <color name="accent2">#FFFF6B6B</color>
+    <color name="accent3">#FF51CF66</color>
+    
+    <color name="bg_dark">#FF1A1A2E</color>
+    <color name="bg_card">#FF16213E</color>
+    <color name="bg_button">#FF0F3460</color>
+    
     <color name="white">#FFFFFFFF</color>
-    <color name="black">#FF000000</color>
-    <color name="gray_light">#FFF5F5F5</color>
-    <color name="gray_dark">#FF757575</color>
-    <color name="overlay_icon_bg">#CC6200EE</color>
+    <color name="text_gray">#FFA0A0A0</color>
+    <color name="divider">#FF2A2A4A</color>
+    
+    <color name="overlay_bg">#DD1A1A2E</color>
+    <color name="btn_bg">#CC0F3460</color>
+    
+    <color name="overlay_icon_bg">#CC6C5CE7</color>
     <color name="overlay_icon_tint">#FFFFFFFF</color>
 </resources>

@@ -13,172 +13,160 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
 /**
- * Settings activity for gesture configuration.
+ * Advanced settings for gaming overlay.
  */
 public class SettingsActivity extends AppCompatActivity {
     
-    private SettingsManager settings;
+    private GameSettings s;
     
-    private RadioGroup rgDirection;
-    private SeekBar sbSpeed;
-    private TextView tvSpeed;
-    private Spinner spinnerDistance;
-    
-    private TextView tvStartX, tvStartY;
-    private SeekBar sbStartX, sbStartY;
-    
-    private TextView tvEndX, tvEndY;
-    private SeekBar sbEndX, sbEndY;
-    
-    private String[] distanceLabels = {
-        "Short (20%)", "Medium (40%)", "Long (60%)", "Full (80%)"
-    };
+    // UI
+    private SeekBar sbSize, sbOpacity, sbSpeed, sbFire, sbTap, sbCombo;
+    private TextView tvSize, tvOpacity, tvSpeed, tvFire, tvTap, tvCombo;
+    private RadioGroup rgDir;
+    private Spinner spDist;
     
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+    protected void onCreate(Bundle savedState) {
+        super.onCreate(savedState);
         setContentView(R.layout.activity_settings);
         
-        settings = new SettingsManager(this);
+        s = new GameSettings(this);
         
-        initViews();
-        setupDistanceSpinner();
-        loadSettings();
-        setupListeners();
+        init();
+        load();
+        listeners();
     }
     
-    private void initViews() {
-        rgDirection = findViewById(R.id.rg_direction);
-        sbSpeed = findViewById(R.id.sb_speed);
-        tvSpeed = findViewById(R.id.tv_speed);
-        spinnerDistance = findViewById(R.id.spinner_distance);
+    private void init() {
+        sbSize = findViewById(R.id.sb_panel_size);
+        sbOpacity = findViewById(R.id.sb_opacity);
+        sbSpeed = findViewById(R.id.sb_swipe_speed);
+        sbFire = findViewById(R.id.sb_auto_fire);
+        sbTap = findViewById(R.id.sb_rapid_tap);
+        sbCombo = findViewById(R.id.sb_combo_delay);
         
-        tvStartX = findViewById(R.id.tv_start_x);
-        tvStartY = findViewById(R.id.tv_start_y);
-        sbStartX = findViewById(R.id.sb_start_x);
-        sbStartY = findViewById(R.id.sb_start_y);
+        tvSize = findViewById(R.id.tv_panel_size);
+        tvOpacity = findViewById(R.id.tv_opacity);
+        tvSpeed = findViewById(R.id.tv_swipe_speed);
+        tvFire = findViewById(R.id.tv_auto_fire);
+        tvTap = findViewById(R.id.tv_rapid_tap);
+        tvCombo = findViewById(R.id.tv_combo_delay);
         
-        tvEndX = findViewById(R.id.tv_end_x);
-        tvEndY = findViewById(R.id.tv_end_y);
-        sbEndX = findViewById(R.id.sb_end_x);
-        sbEndY = findViewById(R.id.sb_end_y);
-    }
-    
-    private void setupDistanceSpinner() {
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(
-            this, android.R.layout.simple_spinner_dropdown_item, distanceLabels
+        rgDir = findViewById(R.id.rg_swipe_dir);
+        spDist = findViewById(R.id.spinner_distance);
+        
+        ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(
+            this, R.array.distances, android.R.layout.simple_spinner_dropdown_item
         );
-        spinnerDistance.setAdapter(adapter);
+        spDist.setAdapter(adapter);
     }
     
-    private void loadSettings() {
-        // Direction
-        int dir = settings.getDragDirection();
-        switch (dir) {
-            case SettingsManager.DRAG_UP: rgDirection.check(R.id.rb_up); break;
-            case SettingsManager.DRAG_DOWN: rgDirection.check(R.id.rb_down); break;
-            case SettingsManager.DRAG_LEFT: rgDirection.check(R.id.rb_left); break;
-            case SettingsManager.DRAG_RIGHT: rgDirection.check(R.id.rb_right); break;
-        }
+    private void load() {
+        sbSize.setProgress(s.getPanelSize());
+        tvSize.setText(getSizeName(s.getPanelSize()));
         
-        // Speed
-        sbSpeed.setProgress(settings.getDragSpeed());
-        tvSpeed.setText(settings.getDragSpeed() + " ms");
+        sbOpacity.setProgress(s.getOpacity());
+        tvOpacity.setText(s.getOpacity() + "%");
         
-        // Distance
-        spinnerDistance.setSelection(settings.getDragDistance());
+        int dir = s.getSwipeDirection();
+        if (dir == 0) rgDir.check(R.id.rb_up);
+        else if (dir == 1) rgDir.check(R.id.rb_down);
+        else if (dir == 2) rgDir.check(R.id.rb_left);
+        else rgDir.check(R.id.rb_right);
         
-        // Start position
-        int sx = (int)(settings.getStartXPercent() * 100);
-        int sy = (int)(settings.getStartYPercent() * 100);
-        sbStartX.setProgress(sx);
-        sbStartY.setProgress(sy);
-        tvStartX.setText("X: " + sx + "%");
-        tvStartY.setText("Y: " + sy + "%");
+        sbSpeed.setProgress(s.getSwipeSpeed());
+        tvSpeed.setText(s.getSwipeSpeed() + " ms");
         
-        // End position
-        int ex = (int)(settings.getEndXPercent() * 100);
-        int ey = (int)(settings.getEndYPercent() * 100);
-        sbEndX.setProgress(ex);
-        sbEndY.setProgress(ey);
-        tvEndX.setText("X: " + ex + "%");
-        tvEndY.setText("Y: " + ey + "%");
+        spDist.setSelection(s.getSwipeDistance());
+        
+        sbFire.setProgress(s.getAutoFireSpeed());
+        tvFire.setText(s.getAutoFireSpeed() + " ms");
+        
+        sbTap.setProgress(s.getRapidTapInterval());
+        tvTap.setText(s.getRapidTapInterval() + " ms");
+        
+        sbCombo.setProgress(s.getComboDelay());
+        tvCombo.setText(s.getComboDelay() + " ms");
     }
     
-    private void setupListeners() {
-        // Speed
-        sbSpeed.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+    private void listeners() {
+        sbSize.setOnSeekBarChangeListener(new SimpleSeek() {
+            public void onProgressChanged(SeekBar b, int p, boolean u) {
+                tvSize.setText(getSizeName(p));
+            }
+        });
+        
+        sbOpacity.setOnSeekBarChangeListener(new SimpleSeek() {
+            public void onProgressChanged(SeekBar b, int p, boolean u) {
+                tvOpacity.setText(p + "%");
+            }
+        });
+        
+        sbSpeed.setOnSeekBarChangeListener(new SimpleSeek() {
             public void onProgressChanged(SeekBar b, int p, boolean u) {
                 tvSpeed.setText(p + " ms");
             }
-            public void onStartTrackingTouch(SeekBar b) {}
-            public void onStopTrackingTouch(SeekBar b) {}
         });
         
-        // Start X
-        sbStartX.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+        sbFire.setOnSeekBarChangeListener(new SimpleSeek() {
             public void onProgressChanged(SeekBar b, int p, boolean u) {
-                tvStartX.setText("X: " + p + "%");
+                tvFire.setText(p + " ms");
             }
-            public void onStartTrackingTouch(SeekBar b) {}
-            public void onStopTrackingTouch(SeekBar b) {}
         });
         
-        // Start Y
-        sbStartY.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+        sbTap.setOnSeekBarChangeListener(new SimpleSeek() {
             public void onProgressChanged(SeekBar b, int p, boolean u) {
-                tvStartY.setText("Y: " + p + "%");
+                tvTap.setText(p + " ms");
             }
-            public void onStartTrackingTouch(SeekBar b) {}
-            public void onStopTrackingTouch(SeekBar b) {}
         });
         
-        // End X
-        sbEndX.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+        sbCombo.setOnSeekBarChangeListener(new SimpleSeek() {
             public void onProgressChanged(SeekBar b, int p, boolean u) {
-                tvEndX.setText("X: " + p + "%");
+                tvCombo.setText(p + " ms");
             }
-            public void onStartTrackingTouch(SeekBar b) {}
-            public void onStopTrackingTouch(SeekBar b) {}
         });
         
-        // End Y
-        sbEndY.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            public void onProgressChanged(SeekBar b, int p, boolean u) {
-                tvEndY.setText("Y: " + p + "%");
-            }
-            public void onStartTrackingTouch(SeekBar b) {}
-            public void onStopTrackingTouch(SeekBar b) {}
-        });
-        
-        // Save button
-        findViewById(R.id.btn_save).setOnClickListener(v -> saveSettings());
+        findViewById(R.id.btn_save).setOnClickListener(v -> save());
+        findViewById(R.id.btn_reset).setOnClickListener(v -> reset());
     }
     
-    private void saveSettings() {
-        // Direction
-        int dirId = rgDirection.getCheckedRadioButtonId();
-        int dir = SettingsManager.DRAG_UP;
-        if (dirId == R.id.rb_down) dir = SettingsManager.DRAG_DOWN;
-        else if (dirId == R.id.rb_left) dir = SettingsManager.DRAG_LEFT;
-        else if (dirId == R.id.rb_right) dir = SettingsManager.DRAG_RIGHT;
-        settings.setDragDirection(dir);
+    private void save() {
+        s.setPanelSize(sbSize.getProgress());
+        s.setOpacity(sbOpacity.getProgress());
         
-        // Speed
-        settings.setDragSpeed(sbSpeed.getProgress());
+        int dir = 0;
+        if (rgDir.getCheckedRadioButtonId() == R.id.rb_down) dir = 1;
+        else if (rgDir.getCheckedRadioButtonId() == R.id.rb_left) dir = 2;
+        else if (rgDir.getCheckedRadioButtonId() == R.id.rb_right) dir = 3;
+        s.setSwipeDirection(dir);
         
-        // Distance
-        settings.setDragDistance(spinnerDistance.getSelectedItemPosition());
-        
-        // Start position
-        settings.setStartXPercent(sbStartX.getProgress() / 100f);
-        settings.setStartYPercent(sbStartY.getProgress() / 100f);
-        
-        // End position
-        settings.setEndXPercent(sbEndX.getProgress() / 100f);
-        settings.setEndYPercent(sbEndY.getProgress() / 100f);
+        s.setSwipeSpeed(sbSpeed.getProgress());
+        s.setSwipeDistance(spDist.getSelectedItemPosition());
+        s.setAutoFireSpeed(sbFire.getProgress());
+        s.setRapidTapInterval(sbTap.getProgress());
+        s.setComboDelay(sbCombo.getProgress());
         
         Toast.makeText(this, "Settings saved!", Toast.LENGTH_SHORT).show();
         finish();
+    }
+    
+    private void reset() {
+        s.reset();
+        load();
+        Toast.makeText(this, "Reset to defaults", Toast.LENGTH_SHORT).show();
+    }
+    
+    private String getSizeName(int size) {
+        switch (size) {
+            case 0: return "Small";
+            case 2: return "Large";
+            default: return "Normal";
+        }
+    }
+    
+    private static class SimpleSeek implements SeekBar.OnSeekBarChangeListener {
+        public void onProgressChanged(SeekBar b, int p, boolean u) {}
+        public void onStartTrackingTouch(SeekBar b) {}
+        public void onStopTrackingTouch(SeekBar b) {}
     }
 }

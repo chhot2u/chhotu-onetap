@@ -6,56 +6,73 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.graphics.Color;
 import android.graphics.PixelFormat;
+import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 /**
- * Simple overlay service that performs gestures using shell commands.
- * No accessibility service needed!
+ * Advanced gaming overlay with multiple features:
+ * - Quick Swipe
+ * - Auto Fire
+ * - Rapid Tap
+ * - Combo Move
+ * - Drag Mode
+ * - Position Save
  */
 public class OverlayService extends Service {
     
     private static final String TAG = "OverlayService";
-    private static final String CHANNEL_ID = "chhotu_overlay_channel";
-    private static final int NOTIFICATION_ID = 1001;
+    private static final String CHANNEL_ID = "gamepad_channel";
+    private static final int NOTIF_ID = 2001;
     
-    private static boolean isRunning = false;
+    private static boolean running = false;
     
     private WindowManager windowManager;
-    private View overlayView;
-    private GestureHelper gestureHelper;
+    private FrameLayout mainPanel;
+    private LinearLayout buttonContainer;
+    private GameSettings settings;
+    private GestureHelper gesture;
     private Handler handler;
     
-    private float touchStartX, touchStartY;
-    private long touchStartTime;
+    // Auto fire state
+    private boolean autoFireActive = false;
+    private Runnable autoFireRunnable;
     
-    public static boolean isRunning() {
-        return isRunning;
-    }
+    // Rapid tap state
+    private boolean rapidTapActive = false;
+    private Runnable rapidTapRunnable;
+    
+    public static boolean isRunning() { return running; }
     
     @Override
     public void onCreate() {
         super.onCreate();
-        isRunning = true;
-        Log.d(TAG, "Service created");
+        running = true;
         
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-        gestureHelper = new GestureHelper(this);
+        settings = new GameSettings(this);
+        gesture = new GestureHelper(this);
         handler = new Handler(Looper.getMainLooper());
         
         createNotification();
-        createOverlay();
+        createPanel();
+        
+        Log.d(TAG, "Service created");
     }
     
     @Override
@@ -64,37 +81,27 @@ public class OverlayService extends Service {
     }
     
     @Override
-    public IBinder onBind(Intent intent) {
-        return null;
-    }
+    public IBinder onBind(Intent intent) { return null; }
     
     @Override
     public void onDestroy() {
         super.onDestroy();
-        isRunning = false;
-        removeOverlay();
+        running = false;
+        stopAutoFire();
+        stopRapidTap();
+        removePanel();
         Log.d(TAG, "Service destroyed");
     }
     
     private void createNotification() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID,
-                "Chhotu OneTap",
-                NotificationManager.IMPORTANCE_LOW
-            );
-            channel.setDescription("Overlay service");
-            
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            if (manager != null) {
-                manager.createNotificationChannel(channel);
-            }
+            NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "GamePad Pro", NotificationManager.IMPORTANCE_LOW);
+            ch.setDescription("Gaming overlay");
+            getSystemService(NotificationManager.class).createNotificationChannel(ch);
         }
         
-        Intent notificationIntent = new Intent(this, MainActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(
-            this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE
-        );
+        Intent intent = new Intent(this, MainActivity.class);
+        PendingIntent pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
         
         Notification.Builder builder;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -103,21 +110,25 @@ public class OverlayService extends Service {
             builder = new Notification.Builder(this);
         }
         
-        Notification notification = builder
-            .setContentTitle("Chhotu OneTap Active")
-            .setContentText("Tap the icon to perform gesture")
+        Notification n = builder
+            .setContentTitle("GamePad Pro Active")
+            .setContentText("Tap the floating panel for actions")
             .setSmallIcon(R.drawable.ic_overlay)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(pi)
             .setOngoing(true)
             .build();
         
-        startForeground(NOTIFICATION_ID, notification);
+        startForeground(NOTIF_ID, n);
     }
     
-    private void createOverlay() {
+    private void createPanel() {
         int overlayType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
             ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             : WindowManager.LayoutParams.TYPE_PHONE;
+        
+        // Get saved position
+        int savedX = settings.getPanelX();
+        int savedY = settings.getPanelY();
         
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -127,124 +138,246 @@ public class OverlayService extends Service {
             PixelFormat.TRANSLUCENT
         );
         
-        params.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-        params.x = 0;
-        params.y = 100;
+        params.gravity = Gravity.START | Gravity.TOP;
+        params.x = savedX;
+        params.y = savedY;
         
-        // Create a circular button
-        FrameLayout container = new FrameLayout(this);
-        container.setBackgroundResource(R.drawable.bg_overlay_circle);
+        // Main container
+        mainPanel = new FrameLayout(this);
         
-        ImageView icon = new ImageView(this);
-        icon.setImageResource(R.drawable.ic_overlay);
-        int padding = (int) (12 * getResources().getDisplayMetrics().density);
-        icon.setPadding(padding, padding, padding, padding);
+        // Background
+        mainPanel.setBackgroundColor(Color.parseColor("#DD1A1A2E"));
         
-        container.addView(icon, new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.CENTER
-        ));
+        // Button container
+        buttonContainer = new LinearLayout(this);
+        buttonContainer.setOrientation(LinearLayout.VERTICAL);
+        buttonContainer.setGravity(Gravity.CENTER);
         
-        overlayView = container;
+        // Size based on settings
+        float scale = getScale();
+        int padding = (int)(12 * scale);
+        buttonContainer.setPadding(padding, padding, padding, padding);
         
-        // Touch listener
-        overlayView.setOnTouchListener(new View.OnTouchListener() {
+        // Create feature buttons
+        createFeatureButtons();
+        
+        mainPanel.addView(buttonContainer);
+        
+        // Enable drag
+        enableDrag(mainPanel, params);
+        
+        windowManager.addView(mainPanel, params);
+        
+        Log.d(TAG, "Panel created");
+    }
+    
+    private void createFeatureButtons() {
+        float scale = getScale();
+        int btnHeight = (int)(56 * scale);
+        int marginBottom = (int)(8 * scale);
+        int textSize = (int)(14 * scale);
+        
+        // Quick Swipe button
+        TextView swipeBtn = createButton("⚡ Quick Swipe", "#6C5CE7", textSize, btnHeight, marginBottom);
+        swipeBtn.setOnClickListener(v -> performQuickSwipe());
+        buttonContainer.addView(swipeBtn);
+        
+        // Auto Fire button
+        TextView fireBtn = createButton("🔥 Auto Fire", "#FF6B6B", textSize, btnHeight, marginBottom);
+        fireBtn.setOnClickListener(v -> toggleAutoFire());
+        buttonContainer.addView(fireBtn);
+        
+        // Rapid Tap button
+        TextView tapBtn = createButton("👆 Rapid Tap", "#51CF66", textSize, btnHeight, marginBottom);
+        tapBtn.setOnClickListener(v -> toggleRapidTap());
+        buttonContainer.addView(tapBtn);
+        
+        // Combo Move button
+        TextView comboBtn = createButton("🎯 Combo Move", "#00CEFF", textSize, btnHeight, marginBottom);
+        comboBtn.setOnClickListener(v -> performCombo());
+        buttonContainer.addView(comboBtn);
+        
+        // Save Position button
+        TextView saveBtn = createButton("📍 Save Pos", "#FFA502", textSize, btnHeight, marginBottom);
+        saveBtn.setOnClickListener(v -> saveCurrentPosition());
+        buttonContainer.addView(saveBtn);
+    }
+    
+    private TextView createButton(String text, String color, int textSize, int height, int marginBottom) {
+        TextView btn = new TextView(this);
+        btn.setText(text);
+        btn.setTextSize(textSize);
+        btn.setTextColor(Color.WHITE);
+        btn.setTypeface(null, Typeface.BOLD);
+        btn.setGravity(Gravity.CENTER);
+        
+        // Background
+        btn.setBackgroundColor(Color.parseColor(color));
+        
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            height
+        );
+        lp.setMargins(0, 0, 0, marginBottom);
+        btn.setLayoutParams(lp);
+        
+        return btn;
+    }
+    
+    private float getScale() {
+        switch (settings.getPanelSize()) {
+            case 0: return 0.7f; // Small
+            case 2: return 1.3f; // Large
+            default: return 1.0f; // Normal
+        }
+    }
+    
+    // ==================== GESTURE ACTIONS ====================
+    
+    private void performQuickSwipe() {
+        int dir = settings.getSwipeDirection();
+        int speed = settings.getSwipeSpeed();
+        float dist = settings.getSwipeDistancePercent();
+        
+        boolean ok = gesture.quickSwipe(dir, speed, dist);
+        toast(ok ? "Swipe executed!" : "Swipe failed");
+    }
+    
+    private void toggleAutoFire() {
+        if (autoFireActive) {
+            stopAutoFire();
+            toast("Auto Fire OFF");
+        } else {
+            startAutoFire();
+            toast("Auto Fire ON");
+        }
+    }
+    
+    private void startAutoFire() {
+        autoFireActive = true;
+        int speed = settings.getAutoFireSpeed();
+        
+        autoFireRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (autoFireActive) {
+                    // Tap center of screen
+                    DisplayMetrics dm = getResources().getDisplayMetrics();
+                    gesture.autoFire(dm.widthPixels / 2, dm.heightPixels / 2, speed);
+                    handler.postDelayed(this, speed);
+                }
+            }
+        };
+        handler.post(autoFireRunnable);
+    }
+    
+    private void stopAutoFire() {
+        autoFireActive = false;
+        if (autoFireRunnable != null) {
+            handler.removeCallbacks(autoFireRunnable);
+            autoFireRunnable = null;
+        }
+    }
+    
+    private void toggleRapidTap() {
+        if (rapidTapActive) {
+            stopRapidTap();
+            toast("Rapid Tap OFF");
+        } else {
+            startRapidTap();
+            toast("Rapid Tap ON");
+        }
+    }
+    
+    private void startRapidTap() {
+        rapidTapActive = true;
+        int interval = settings.getRapidTapInterval();
+        
+        rapidTapRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (rapidTapActive) {
+                    DisplayMetrics dm = getResources().getDisplayMetrics();
+                    gesture.autoFire(dm.widthPixels / 2, dm.heightPixels / 2, interval);
+                    handler.postDelayed(this, interval);
+                }
+            }
+        };
+        handler.post(rapidTapRunnable);
+    }
+    
+    private void stopRapidTap() {
+        rapidTapActive = false;
+        if (rapidTapRunnable != null) {
+            handler.removeCallbacks(rapidTapRunnable);
+            rapidTapRunnable = null;
+        }
+    }
+    
+    private void performCombo() {
+        new Thread(() -> {
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            int cx = dm.widthPixels / 2;
+            int cy = dm.heightPixels / 2;
+            
+            // Tap then swipe
+            gesture.tap(cx, cy);
+            try { Thread.sleep(settings.getComboDelay()); } catch (InterruptedException e) {}
+            gesture.quickSwipe(settings.getSwipeDirection(), 
+                              settings.getSwipeSpeed(), 
+                              settings.getSwipeDistancePercent());
+        }).start();
+        toast("Combo executed!");
+    }
+    
+    private void saveCurrentPosition() {
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        settings.savePosition(dm.widthPixels / 2, dm.heightPixels / 2);
+        toast("Position saved!");
+    }
+    
+    // ==================== DRAG SUPPORT ====================
+    
+    private void enableDrag(View view, WindowManager.LayoutParams params) {
+        view.setOnTouchListener(new View.OnTouchListener() {
+            private float startX, startY;
+            private long touchTime;
+            
             @Override
             public boolean onTouch(View v, MotionEvent event) {
                 switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
-                        touchStartX = event.getRawX();
-                        touchStartY = event.getRawY();
-                        touchStartTime = System.currentTimeMillis();
+                        startX = event.getRawX();
+                        startY = event.getRawY();
+                        touchTime = System.currentTimeMillis();
                         return true;
-                        
                     case MotionEvent.ACTION_UP:
-                        long duration = System.currentTimeMillis() - touchStartTime;
-                        
-                        // Only trigger on quick tap (not drag)
-                        if (duration < 300) {
-                            Log.d(TAG, "Tap detected, performing gesture");
-                            performGesture();
-                        }
+                        // Save new position
+                        settings.setPanelPosition(params.x, params.y);
+                        return true;
+                    case MotionEvent.ACTION_MOVE:
+                        params.x = (int)(event.getRawX() - startX) + params.x;
+                        params.y = (int)(event.getRawY() - startY) + params.y;
+                        startX = event.getRawX();
+                        startY = event.getRawY();
+                        try {
+                            windowManager.updateViewLayout(mainPanel, params);
+                        } catch (Exception e) {}
                         return true;
                 }
                 return false;
             }
         });
-        
-        windowManager.addView(overlayView, params);
-        Log.d(TAG, "Overlay created");
-        
-        Toast.makeText(this, "Tap the button to perform gesture!", Toast.LENGTH_SHORT).show();
     }
     
-    private void removeOverlay() {
-        if (overlayView != null && windowManager != null) {
-            try {
-                windowManager.removeView(overlayView);
-            } catch (Exception e) {
-                Log.w(TAG, "Error removing overlay: " + e.getMessage());
-            }
-            overlayView = null;
+    private void removePanel() {
+        if (mainPanel != null && windowManager != null) {
+            try { windowManager.removeView(mainPanel); } catch (Exception e) {}
+            mainPanel = null;
         }
     }
     
-    private void performGesture() {
-        SettingsManager settings = new SettingsManager(this);
-        
-        // Get screen dimensions
-        int screenWidth = getResources().getDisplayMetrics().widthPixels;
-        int screenHeight = getResources().getDisplayMetrics().heightPixels;
-        
-        // Calculate start position from percentages
-        int startX = (int) (screenWidth * settings.getStartXPercent());
-        int startY = (int) (screenHeight * settings.getStartYPercent());
-        
-        // Calculate distance based on direction
-        int direction = settings.getDragDirection();
-        int speed = settings.getDragSpeed();
-        float distancePercent = settings.getDragDistancePercent();
-        int distance = (int) (screenHeight * distancePercent);
-        
-        Log.d(TAG, "Performing gesture: direction=" + direction + 
-              ", start=(" + startX + "," + startY + ")" +
-              ", distance=" + distance + ", speed=" + speed);
-        
-        // Perform the gesture
-        boolean success = gestureHelper.performSwipe(
-            direction, startX, startY, distance, speed
-        );
-        
-        if (!success) {
-            // Try alternate method with coordinates
-            tryAlternateGesture(settings, screenWidth, screenHeight);
-        }
-    }
-    
-    private void tryAlternateGesture(SettingsManager settings, int screenWidth, int screenHeight) {
-        // Try a simple center swipe as fallback
-        int centerX = screenWidth / 2;
-        int startY = (int) (screenHeight * 0.8);
-        int endY = (int) (screenHeight * 0.2);
-        
-        Log.d(TAG, "Trying alternate gesture: center swipe");
-        
-        try {
-            String command = String.format("input swipe %d %d %d %d %d",
-                centerX, startY, centerX, endY, settings.getDragSpeed());
-            
-            Process process = Runtime.getRuntime().exec(command);
-            int result = process.waitFor();
-            
-            if (result == 0) {
-                Toast.makeText(this, "Gesture performed!", Toast.LENGTH_SHORT).show();
-            } else {
-                Toast.makeText(this, "Gesture failed - app may need root or ADB", Toast.LENGTH_LONG).show();
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Alternate gesture failed: " + e.getMessage());
-            Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
+    private void toast(String msg) {
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
     }
 }
