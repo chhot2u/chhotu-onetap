@@ -1,6 +1,5 @@
 package com.chhotu.onetap;
 
-import android.content.ComponentName;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -10,29 +9,27 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 /**
- * Main activity for Chhotu OneTap.
+ * Simple main activity with permission handling.
  */
 public class MainActivity extends AppCompatActivity {
     
-    private SettingsManager settingsManager;
-    private Button btnToggleService;
+    private Button btnStart;
     private Button btnSettings;
-    private Button btnCheckPermissions;
-    private TextView tvServiceStatus;
-    private TextView tvPermissionStatus;
+    private TextView tvStatus;
+    private TextView tvHint;
     
-    // Launcher for overlay permission
-    private final ActivityResultLauncher<Intent> overlayPermissionLauncher =
+    private final ActivityResultLauncher<Intent> overlayLauncher =
         registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
-            updatePermissionStatus();
+            updateStatus();
             if (Settings.canDrawOverlays(this)) {
-                Toast.makeText(this, "Overlay permission granted!", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Permission granted!", Toast.LENGTH_SHORT).show();
             }
         });
     
@@ -41,110 +38,45 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         
-        settingsManager = new SettingsManager(this);
-        
         initViews();
         setupListeners();
-        updatePermissionStatus();
+        updateStatus();
     }
     
     @Override
     protected void onResume() {
         super.onResume();
-        updatePermissionStatus();
-        updateServiceStatus();
+        updateStatus();
     }
     
     private void initViews() {
-        btnToggleService = findViewById(R.id.btn_toggle_service);
+        btnStart = findViewById(R.id.btn_start);
         btnSettings = findViewById(R.id.btn_settings);
-        btnCheckPermissions = findViewById(R.id.btn_check_permissions);
-        tvServiceStatus = findViewById(R.id.tv_service_status);
-        tvPermissionStatus = findViewById(R.id.tv_permission_status);
+        tvStatus = findViewById(R.id.tv_status);
+        tvHint = findViewById(R.id.tv_hint);
     }
     
     private void setupListeners() {
-        btnToggleService.setOnClickListener(v -> toggleService());
-        btnSettings.setOnClickListener(v -> {
-            Intent intent = new Intent(this, SettingsActivity.class);
-            startActivity(intent);
-        });
-        btnCheckPermissions.setOnClickListener(v -> checkPermissions());
-    }
-    
-    private void checkPermissions() {
-        boolean hasOverlay = Settings.canDrawOverlays(this);
-        boolean hasAccessibility = isAccessibilityServiceEnabled();
-        
-        StringBuilder status = new StringBuilder();
-        status.append("Overlay: ").append(hasOverlay ? "✓" : "✗").append("\n");
-        status.append("Accessibility: ").append(hasAccessibility ? "✓" : "✗").append("\n\n");
-        
-        if (!hasOverlay) {
-            status.append("Grant overlay permission first.");
-        } else if (!hasAccessibility) {
-            status.append("Grant accessibility permission next.");
-        } else {
-            status.append("All permissions granted!");
-        }
-        
-        new AlertDialog.Builder(this)
-            .setTitle("Permission Status")
-            .setMessage(status.toString())
-            .setPositiveButton("Grant Overlay", (d, w) -> requestOverlayPermission())
-            .setNeutralButton("Grant Accessibility", (d, w) -> requestAccessibilityPermission())
-            .setNegativeButton("OK", null)
-            .show();
-    }
-    
-    private void updatePermissionStatus() {
-        boolean hasOverlay = Settings.canDrawOverlays(this);
-        boolean hasAccessibility = isAccessibilityServiceEnabled();
-        
-        String status = (hasOverlay ? "✓" : "✗") + " Overlay\n" +
-                       (hasAccessibility ? "✓" : "✗") + " Accessibility";
-        
-        tvPermissionStatus.setText(status);
-    }
-    
-    private void updateServiceStatus() {
-        if (OverlayService.isRunning()) {
-            tvServiceStatus.setText("Service: RUNNING");
-            btnToggleService.setText(R.string.stop_service);
-        } else {
-            tvServiceStatus.setText("Service: STOPPED");
-            btnToggleService.setText(R.string.start_service);
-        }
+        btnStart.setOnClickListener(v -> toggleService());
+        btnSettings.setOnClickListener(v -> openSettings());
     }
     
     private void toggleService() {
         if (OverlayService.isRunning()) {
-            stopOverlayService();
+            stopService();
         } else {
-            startOverlayService();
+            startService();
         }
     }
     
-    private void startOverlayService() {
+    private void startService() {
         // Check overlay permission
         if (!Settings.canDrawOverlays(this)) {
-            requestOverlayPermission();
+            showPermissionDialog();
             return;
         }
         
-        // Check accessibility permission
-        if (!isAccessibilityServiceEnabled()) {
-            new AlertDialog.Builder(this)
-                .setTitle("Accessibility Required")
-                .setMessage("Chhotu OneTap needs Accessibility Service to perform gestures.\n\n" +
-                           "Please enable 'Chhotu OneTap' in Accessibility settings.")
-                .setPositiveButton("Open Settings", (d, w) -> requestAccessibilityPermission())
-                .setNegativeButton("Cancel", null)
-                .show();
-            return;
-        }
-        
-        // Start the service
+        // Start service
         Intent intent = new Intent(this, OverlayService.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent);
@@ -152,14 +84,24 @@ public class MainActivity extends AppCompatActivity {
             startService(intent);
         }
         
-        updateServiceStatus();
-        Toast.makeText(this, "Service started! Tap the icon to drag.", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Service started! Tap the button to perform gesture.", Toast.LENGTH_LONG).show();
+        updateStatus();
     }
     
-    private void stopOverlayService() {
+    private void stopService() {
         Intent intent = new Intent(this, OverlayService.class);
         stopService(intent);
-        updateServiceStatus();
+        updateStatus();
+    }
+    
+    private void showPermissionDialog() {
+        new AlertDialog.Builder(this)
+            .setTitle("Permission Required")
+            .setMessage("Chhotu OneTap needs permission to display over other apps.\n\n" +
+                       "Tap 'Grant' to open settings, then enable 'Display over other apps' for this app.")
+            .setPositiveButton("Grant", (d, w) -> requestOverlayPermission())
+            .setNegativeButton("Cancel", null)
+            .show();
     }
     
     private void requestOverlayPermission() {
@@ -167,26 +109,41 @@ public class MainActivity extends AppCompatActivity {
             Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
             Uri.parse("package:" + getPackageName())
         );
-        overlayPermissionLauncher.launch(intent);
+        overlayLauncher.launch(intent);
     }
     
-    private void requestAccessibilityPermission() {
-        Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+    private void openSettings() {
+        Intent intent = new Intent(this, SettingsActivity.class);
         startActivity(intent);
     }
     
-    private boolean isAccessibilityServiceEnabled() {
-        try {
-            String enabledServices = Settings.Secure.getString(
-                getContentResolver(),
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            );
-            if (enabledServices == null) return false;
-            
-            ComponentName serviceComponent = new ComponentName(this, DragService.class);
-            return enabledServices.contains(serviceComponent.flattenToString());
-        } catch (Exception e) {
-            return false;
+    private void updateStatus() {
+        boolean hasOverlay = Settings.canDrawOverlays(this);
+        boolean isRunning = OverlayService.isRunning();
+        
+        StringBuilder status = new StringBuilder();
+        
+        // Permission status
+        status.append("📱 Permission: ");
+        status.append(hasOverlay ? "✅ Granted" : "❌ Not Granted");
+        status.append("\n\n");
+        
+        // Service status
+        status.append("⚙️ Service: ");
+        status.append(isRunning ? "🟢 Running" : "⚪ Stopped");
+        
+        tvStatus.setText(status.toString());
+        
+        // Update button text
+        btnStart.setText(isRunning ? "Stop Service" : "Start Service");
+        
+        // Update hint
+        if (isRunning) {
+            tvHint.setText("A floating button appeared at the bottom of your screen. Tap it to perform a drag gesture!");
+        } else if (hasOverlay) {
+            tvHint.setText("Tap 'Start Service' to begin. Then tap the floating button to perform gestures.");
+        } else {
+            tvHint.setText("Grant overlay permission first, then start the service.");
         }
     }
 }
